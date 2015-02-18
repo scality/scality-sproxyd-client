@@ -13,10 +13,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import swift.common.exceptions
+# If we are running in the context of Swift, all our exceptions must
+# subclasses DiskFileError because that's what the calling code expects
+try:
+    import swift.common.exceptions
+    BASE_EXCEPTION = swift.common.exceptions.DiskFileError
+except ImportError:
+    BASE_EXCEPTION = Exception
 
 
-class SproxydException(swift.common.exceptions.DiskFileError):
+class SproxydException(BASE_EXCEPTION):
     def __init__(self, msg):
         super(SproxydException, self).__init__(msg)
 
