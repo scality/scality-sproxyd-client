@@ -1,0 +1,6 @@
+# Hacking already pins down pep8, pyflakes and flake8
+hacking>=0.10.0,<0.11
+coverage
+nose
+openstack.nose_plugin
+mock>=1.0
