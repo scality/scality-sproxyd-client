@@ -54,14 +54,16 @@ class TestSproxydClient(unittest.TestCase):
         sfs = SproxydClient(conf, mock.Mock())
         self.assertEqual('/missing_slashes/', sfs.base_path)
 
-    def test_init_sproxyd_hosts(self):
+    @mock.patch('eventlet.spawn')
+    def test_init_sproxyd_hosts(self, _):
         # Mind the white spaces
         conf = {'sproxyd_host': ' host1:81 , host2:82 '}
         sfs = SproxydClient(conf, mock.Mock())
         expected_sproxyd_hosts_set = set([('host1', 81), ('host2', 82)])
         self.assertEqual(expected_sproxyd_hosts_set, sfs.sproxyd_hosts_set)
 
-    def test_init_monitoring_threads(self):
+    @mock.patch('eventlet.spawn')
+    def test_init_monitoring_threads(self, _):
         conf = {'sproxyd_host': 'host1:81,host2:82'}
         sfs = SproxydClient(conf, mock.Mock())
         self.assertEqual(2, len(sfs.healthcheck_threads))
