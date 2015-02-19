@@ -46,7 +46,7 @@ class SproxydClient(object):
 
         self.healthcheck_threads = []
         self.sproxyd_hosts_set = set()
-        hosts = conf.get('sproxyd_host', 'localhost:81').strip(',')
+        hosts = conf['sproxyd_host'].strip(',')
         for host in hosts.split(","):
             ip_addr, port = host.strip().split(':')
             self.sproxyd_hosts_set.add((ip_addr, int(port)))
