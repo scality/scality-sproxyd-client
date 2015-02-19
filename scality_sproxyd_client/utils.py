@@ -103,7 +103,7 @@ def get_urllib3():
                             "system is not new enough. The one installed from "
                             "PyPi will be used.")
         for mod in [_ for _ in sys.modules.keys() if _.startswith('urllib3')]:
-            del(sys.modules[mod])
+            del sys.modules[mod]
         with import_specific(REQUIRES['urllib3']):
             import urllib3
 
