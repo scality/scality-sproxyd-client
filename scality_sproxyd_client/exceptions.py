@@ -23,8 +23,7 @@ except ImportError:
 
 
 class SproxydException(BASE_EXCEPTION):
-    def __init__(self, msg):
-        super(SproxydException, self).__init__(msg)
+    '''Base Exception for this library.'''
 
 
 class SproxydHTTPException(SproxydException):
