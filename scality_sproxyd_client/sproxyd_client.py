@@ -17,6 +17,7 @@ import base64
 import eventlet
 import functools
 import itertools
+import logging
 import pickle
 import types
 import urllib
@@ -36,25 +37,56 @@ def drain_connection(response):
 class SproxydClient(object):
     """A sproxyd file system scheme."""
 
-    def __init__(self, conf, logger):
-        self.logger = logger
-        self.conn_timeout = float(conf.get('sproxyd_conn_timeout', 10))
-        self.proxy_timeout = float(conf.get('sproxyd_proxy_timeout', 3))
+    logger = logging.getLogger(__name__)
+    conn_timeout = 10.0
+    proxy_timeout = 3.0
 
-        path = conf.get('sproxyd_path', '/proxy/chord')
+    def __init__(self, hosts, path, conn_timeout=None, proxy_timeout=None,
+                 logger=None):
+        '''Construct an `sproxyd` client
+
+        For a given `(address, port)` entry in `hosts`, the following URL will
+        be used to access the corresponding `sproxyd` instance::
+
+            http://address:port/path/
+
+        If `conn_timeout`, `proxy_timeout` or `logger` are not provided, a
+        default value will be used.
+
+        :param hosts: Service address/port pairs
+        :type hosts: iterable of `(str, int)`
+        :param path: Path to data
+        :type path: `str`
+        :param conn_timeout: Connection timeout
+        :type conn_timeout: `float`
+        :param proxy_timeout: Proxy timeout
+        :type proxy_timeout: `float`
+        :param logger: Logger used by methods on the instance
+        :type logger: `logging.Logger`
+        '''
+
+        if logger:
+            self.logger = logger
+
+        if conn_timeout is not None:
+            self.conn_timeout = conn_timeout
+
+        if proxy_timeout is not None:
+            self.proxy_timeout = proxy_timeout
+
         self.base_path = '/%s/' % path.strip('/')
 
         self.healthcheck_threads = []
         self.sproxyd_hosts_set = set()
-        hosts = conf['sproxyd_host'].strip(',')
-        for host in hosts.split(","):
-            ip_addr, port = host.strip().split(':')
-            self.sproxyd_hosts_set.add((ip_addr, int(port)))
 
-            url = 'http://%s:%d%s.conf' % (ip_addr, int(port), self.base_path)
+        for addr in hosts:
+            (ip_addr, port) = addr
+            self.sproxyd_hosts_set.add(addr)
+
+            url = 'http://%s:%d%s.conf' % (ip_addr, port, self.base_path)
             ping_url = functools.partial(self.ping, url)
-            on_up = functools.partial(self.on_sproxyd_up, ip_addr, int(port))
-            on_down = functools.partial(self.on_sproxyd_down, ip_addr, int(port))
+            on_up = functools.partial(self.on_sproxyd_up, ip_addr, port)
+            on_down = functools.partial(self.on_sproxyd_down, ip_addr, port)
             thread = eventlet.spawn(utils.monitoring_loop, ping_url, on_up, on_down)
             self.healthcheck_threads.append(thread)
 
