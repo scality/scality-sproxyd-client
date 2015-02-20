@@ -41,22 +41,18 @@ class SproxydClient(object):
     conn_timeout = 10.0
     proxy_timeout = 3.0
 
-    def __init__(self, hosts, path, conn_timeout=None, proxy_timeout=None,
+    def __init__(self, sproxyd_urls, conn_timeout=None, proxy_timeout=None,
                  logger=None):
         '''Construct an `sproxyd` client
 
-        For a given `(address, port)` entry in `hosts`, the following URL will
-        be used to access the corresponding `sproxyd` instance::
-
-            http://address:port/path/
+        This client connects in a round-robin fashion to online Sproxyd
+        connectors provided in the `sproxyd_urls` list.
 
         If `conn_timeout`, `proxy_timeout` or `logger` are not provided, a
         default value will be used.
 
-        :param hosts: Service address/port pairs
-        :type hosts: iterable of `(str, int)`
-        :param path: Path to data
-        :type path: `str`
+        :param sproxyd_urls: URLs where Sproxyd connectors accept 'by path' queries
+        :type sproxyd_urls: iterable of `str`
         :param conn_timeout: Connection timeout
         :type conn_timeout: `float`
         :param proxy_timeout: Proxy timeout
@@ -74,28 +70,27 @@ class SproxydClient(object):
         if proxy_timeout is not None:
             self.proxy_timeout = proxy_timeout
 
-        self.base_path = '/%s/' % path.strip('/')
-
         self.healthcheck_threads = []
-        self.sproxyd_hosts_set = set()
+        self.sproxyd_urls_set = set()
 
-        for addr in hosts:
-            (ip_addr, port) = addr
-            self.sproxyd_hosts_set.add(addr)
+        for sproxyd_url in sproxyd_urls:
+            sproxyd_url = sproxyd_url.rstrip('/') + '/'
+            self.sproxyd_urls_set.add(sproxyd_url)
 
-            url = 'http://%s:%d%s.conf' % (ip_addr, port, self.base_path)
-            ping_url = functools.partial(self.ping, url)
-            on_up = functools.partial(self.on_sproxyd_up, ip_addr, port)
-            on_down = functools.partial(self.on_sproxyd_down, ip_addr, port)
-            thread = eventlet.spawn(utils.monitoring_loop, ping_url, on_up, on_down)
+            sproxyd_ping_url = sproxyd_url + '.conf'
+            ping = functools.partial(self.ping, sproxyd_ping_url)
+            on_up = functools.partial(self.on_sproxyd_up, sproxyd_url)
+            on_down = functools.partial(self.on_sproxyd_down, sproxyd_url)
+            thread = eventlet.spawn(utils.monitoring_loop, ping, on_up, on_down)
             self.healthcheck_threads.append(thread)
 
-        self.sproxyd_hosts = itertools.cycle(list(self.sproxyd_hosts_set))
+        sproxyd_urls_list = list(self.sproxyd_urls_set)
+        self.sproxyd_urls = itertools.cycle(sproxyd_urls_list)
 
         timeout = urllib3.Timeout(connect=self.conn_timeout,
                                   read=self.proxy_timeout)
         # One HTTP Connection pool per sproxyd host
-        self.http_pools = urllib3.PoolManager(len(self.sproxyd_hosts_set),
+        self.http_pools = urllib3.PoolManager(len(self.sproxyd_urls_set),
                                               timeout=timeout, retries=False,
                                               maxsize=32)
 
@@ -117,18 +112,18 @@ class SproxydClient(object):
 
         return False
 
-    def on_sproxyd_up(self, host, port):
-        self.logger.info("Sproxyd connector at %s:%d is up", host, port)
-        self.sproxyd_hosts_set.add((host, port))
-        self.sproxyd_hosts = itertools.cycle(list(self.sproxyd_hosts_set))
-        self.logger.debug('sproxyd_hosts_set is now: %r', self.sproxyd_hosts_set)
+    def on_sproxyd_up(self, sproxyd_url):
+        self.logger.info("Sproxyd connector at %s is up", sproxyd_url)
+        self.sproxyd_urls_set.add(sproxyd_url)
+        self.sproxyd_urls = itertools.cycle(list(self.sproxyd_urls_set))
+        self.logger.debug('sproxyd_urls_set is now: %r', self.sproxyd_urls_set)
 
-    def on_sproxyd_down(self, host, port):
-        self.logger.warning("Sproxyd connector at %s:%d is down " +
-                            "or misconfigured", host, port)
-        self.sproxyd_hosts_set.remove((host, port))
-        self.sproxyd_hosts = itertools.cycle(list(self.sproxyd_hosts_set))
-        self.logger.debug('sproxyd_hosts_set is now: %r', self.sproxyd_hosts_set)
+    def on_sproxyd_down(self, sproxyd_url):
+        self.logger.warning("Sproxyd connector at %s is down " +
+                            "or misconfigured", sproxyd_url)
+        self.sproxyd_urls_set.remove(sproxyd_url)
+        self.sproxyd_urls = itertools.cycle(list(self.sproxyd_urls_set))
+        self.logger.debug('sproxyd_urls_set is now: %r', self.sproxyd_urls_set)
 
     def __del__(self):
         for thread in self.healthcheck_threads:
@@ -139,11 +134,10 @@ class SproxydClient(object):
                 self.logger.exception(msg)
 
     def __repr__(self):
-        ret = 'SproxydFileSystem(conn_timeout=%r, proxy_timeout=%r, ' + \
-            'base_path=%r, hosts_list=%r)'
-        return ret % (
-            self.conn_timeout, self.proxy_timeout, self.base_path,
-            self.sproxyd_hosts_set)
+        ret = 'SproxydClient(sproxyd_urls=%r, conn_timeout=%r, ' + \
+              'proxy_timeout=%r)'
+        return ret % (self.sproxyd_urls_set, self.conn_timeout,
+                      self.proxy_timeout)
 
     def _do_http(self, caller_name, handlers, method, path, headers=None):
         '''Common code for handling a single HTTP request
@@ -165,21 +159,20 @@ class SproxydClient(object):
         :raises SproxydHTTPException: Received an unhandled HTTP response
         '''
 
-        address, port = self.sproxyd_hosts.next()
-        pool = self.http_pools.connection_from_host(address, port)
-        safe_path = self.base_path + urllib.quote(path)
+        sproxyd_url = self.sproxyd_urls.next()
+        full_url = sproxyd_url + urllib.quote(path)
 
         def unexpected_http_status(response):
             message = response.read()
 
             raise exceptions.SproxydHTTPException(
                 '%s: %s' % (caller_name, message),
-                ipaddr=address, port=port,
-                path=safe_path,
+                url=full_url,
                 http_status=response.status,
                 http_reason=response.reason)
 
-        response = pool.request(method, safe_path, headers=headers, preload_content=False)
+        response = self.http_pools.request(method, full_url, headers=headers,
+                                           preload_content=False)
         handler = handlers.get(response.status, unexpected_http_status)
         result = handler(response)
 
@@ -191,8 +184,8 @@ class SproxydClient(object):
                 response.release_conn()
             except Exception as exc:
                 self.logger.error("Unexpected exception while releasing an "
-                                  "HTTP connection to %s:%d: %r", pool.host,
-                                  pool.port, exc)
+                                  "HTTP connection after request to %s: %r",
+                                  full_url, exc)
 
         return result
 
@@ -230,8 +223,7 @@ class SproxydClient(object):
 
         result = self._do_http('put_meta', handlers, 'PUT', name, headers)
 
-        self.logger.debug(
-            "Metadata stored for %s%s : %s", self.base_path, name, metadata)
+        self.logger.debug("Metadata stored for %s : %s", name, metadata)
 
         return result
 

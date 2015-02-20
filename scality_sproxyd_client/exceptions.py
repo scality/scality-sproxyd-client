@@ -27,21 +27,16 @@ class SproxydException(BASE_EXCEPTION):
 
 
 class SproxydHTTPException(SproxydException):
-    def __init__(self, msg, ipaddr='', port=0, path='',
-                 http_status=0, http_reason=''):
+    def __init__(self, msg, url='', http_status=0, http_reason=''):
         super(SproxydHTTPException, self).__init__(msg)
         self.msg = msg
-        self.ipaddr = ipaddr
-        self.port = port
-        self.base_path = path
+        self.url = url
         self.http_status = http_status
         self.http_reason = http_reason
 
     def __str__(self):
         suffix = filter(bool, [
-            self.ipaddr if self.ipaddr else None,
-            ':%d' % int(self.port) if self.port else None,
-            self.base_path if self.base_path else None,
+            self.url if self.url else None,
             ' %d' % self.http_status if self.http_status else None,
             ' %s' % self.http_reason if self.http_reason else None])
 
@@ -53,9 +48,7 @@ class SproxydHTTPException(SproxydException):
     def __repr__(self):
         args = ', '.join('%s=%r' % arg for arg in [
             ('msg', self.msg),
-            ('ipaddr', self.ipaddr),
-            ('port', self.port),
-            ('path', self.base_path),
+            ('url', self.url),
             ('http_status', self.http_status),
             ('http_reason', self.http_reason)])
 
