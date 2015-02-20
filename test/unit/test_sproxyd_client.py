@@ -270,12 +270,12 @@ class TestSproxydClient(unittest.TestCase):
         mock_spawn().kill.assert_called_once_with()
 
 
-@mock.patch('eventlet.spawn')
-def test_ping_when_network_exception_is_raised(_):
+def test_ping_when_network_exception_is_raised():
 
-    def assert_ping_failed(expected_exc):
+    @mock.patch('eventlet.spawn')
+    def assert_ping_failed(expected_exc, _):
         logger = mock.Mock()
-        filesystem = SproxydClient({'sproxyd_host': 'host:81'}, logger)
+        filesystem = SproxydClient({'sproxyd_host': 'host:81'}, logger=logger)
 
         with mock.patch('urllib3.PoolManager.request', side_effect=expected_exc):
             ping_result = filesystem.ping('http://ignored/')
