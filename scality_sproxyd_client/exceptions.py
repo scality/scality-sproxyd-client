@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # If we are running in the context of Swift, all our exceptions must
-# subclasses DiskFileError because that's what the calling code expects
+# inherit from DiskFileError because that's what the calling code expects
 try:
     import swift.common.exceptions
     BASE_EXCEPTION = swift.common.exceptions.DiskFileError
