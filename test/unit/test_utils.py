@@ -144,3 +144,16 @@ def test_get_urllib3():
     urllib3 = utils.get_urllib3()
     assert isinstance(urllib3, types.ModuleType)
     assert urllib3.__version__ in utils.REQUIRES['urllib3']
+
+
+def test_get_urllib3_with_different_versions():
+
+    @mock.patch('scality_sproxyd_client.utils.import_specific')
+    def assert_import_specific_called(version, mock_import_specific):
+        with mock.patch('urllib3.__version__', version):
+            urllib3 = utils.get_urllib3()
+        mock_import_specific.assert_called_once_with(utils.REQUIRES['urllib3'])
+        assert isinstance(urllib3, types.ModuleType)
+
+    for version in ('0.1', '9.9'):
+        yield assert_import_specific_called, version
