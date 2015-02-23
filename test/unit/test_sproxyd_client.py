@@ -141,7 +141,8 @@ class TestSproxydClient(unittest.TestCase):
                                  'HTTP_METH', '/')
         t.kill()
 
-    def test_do_http_unexpected_http_status(self):
+    @mock.patch('eventlet.spawn')
+    def test_do_http_unexpected_http_status(self, _):
         mock_response = mock.Mock()
         mock_response.status = 500
         mock_response.read.return_value = 'error'
@@ -152,9 +153,10 @@ class TestSproxydClient(unittest.TestCase):
             utils.assertRaisesRegexp(SproxydHTTPException, msg, sproxyd_client._do_http,
                                      'caller1', {}, 'HTTP_METH', '/')
 
+    @mock.patch('eventlet.spawn')
     @mock.patch('urllib3.PoolManager.request',
                 return_value=urllib3.response.HTTPResponse(status=200))
-    def test_do_http(self, mock_http):
+    def test_do_http(self, mock_http, _):
         mock_handler = mock.Mock()
 
         sproxyd_client = SproxydClient(['http://host:81/'])
@@ -171,7 +173,8 @@ class TestSproxydClient(unittest.TestCase):
                                           preload_content=False)
         mock_handler.assert_called_once_with(mock_http.return_value)
 
-    def test_do_http_drains_connection(self):
+    @mock.patch('eventlet.spawn')
+    def test_do_http_drains_connection(self, _):
         sproxyd_client = SproxydClient(['http://host:81/path/'])
         mock_response = mock.Mock()
         mock_response.status = 200
@@ -183,8 +186,9 @@ class TestSproxydClient(unittest.TestCase):
 
         self.assertEqual(3, mock_response.read.call_count)
 
+    @mock.patch('eventlet.spawn')
     @mock.patch('urllib3.PoolManager.request')
-    def test_get_meta_on_200(self, mock_http):
+    def test_get_meta_on_200(self, mock_http, _):
         headers = {'x-scal-usermd': base64.b64encode(pickle.dumps('fake'))}
         mock_http.return_value = urllib3.response.HTTPResponse(status=200,
                                                                headers=headers)
@@ -197,9 +201,10 @@ class TestSproxydClient(unittest.TestCase):
                                           headers=None, preload_content=False)
         self.assertEqual('fake', metadata)
 
+    @mock.patch('eventlet.spawn')
     @mock.patch('urllib3.PoolManager.request',
                 return_value=urllib3.response.HTTPResponse(status=404))
-    def test_get_meta_on_404(self, mock_http):
+    def test_get_meta_on_404(self, mock_http, _):
         sproxyd_client = SproxydClient(['http://host:81/path/'])
 
         self.assertTrue(sproxyd_client.get_meta('object_name_1') is None)
@@ -228,9 +233,10 @@ class TestSproxydClient(unittest.TestCase):
         utils.assertRaisesRegexp(SproxydHTTPException, 'no usermd',
                                  sproxyd_client.put_meta, 'obj_1', None)
 
+    @mock.patch('eventlet.spawn')
     @mock.patch('urllib3.PoolManager.request',
                 return_value=urllib3.response.HTTPResponse(status=200))
-    def test_del_object(self, mock_http):
+    def test_del_object(self, mock_http, _):
         sproxyd_client = SproxydClient(['http://host:81/path/'])
         sproxyd_client.del_object('obj_1')
 
