@@ -24,14 +24,13 @@ import urllib
 import weakref
 
 import eventlet
-import eventlet.wsgi
 import mock
 import urllib3
 import urllib3.exceptions
 
 from scality_sproxyd_client.sproxyd_client import SproxydClient
 from scality_sproxyd_client.exceptions import SproxydConfException, \
-    SproxydHTTPException
+    SproxydException, SproxydHTTPException
 from . import utils
 
 
@@ -114,7 +113,7 @@ class TestSproxydClient(unittest.TestCase):
     def test_do_http_connection_timeout(self, mock_http_connect):
         timeout = 0.01
         # This need to be a valid host name otherwise the test fails very early
-        # with 'No address associated with hostname'
+        # with gaierror(-5, 'No address associated with hostname')
         sproxyd_client = SproxydClient(['http://localhost:81/p/'], conn_timeout=timeout)
 
         regex = r'^.*connect timeout=%s.*$' % timeout
@@ -170,7 +169,7 @@ class TestSproxydClient(unittest.TestCase):
 
         mock_http.assert_called_once_with(method,
                                           'http://host:81/' + urllib.quote(path),
-                                          headers=headers,
+                                          headers=headers, body=None,
                                           preload_content=False)
         mock_handler.assert_called_once_with(mock_http.return_value)
 
@@ -199,7 +198,7 @@ class TestSproxydClient(unittest.TestCase):
 
         mock_http.assert_called_once_with('HEAD',
                                           'http://host:81/path/obj_1',
-                                          headers=None, preload_content=False)
+                                          headers=None, body=None, preload_content=False)
         self.assertEqual('fake', metadata)
 
     @mock.patch('eventlet.spawn')
@@ -243,28 +242,108 @@ class TestSproxydClient(unittest.TestCase):
 
         mock_http.assert_called_once_with('DELETE',
                                           'http://host:81/path/obj_1',
-                                          headers=None, preload_content=False)
+                                          headers=None, body=None, preload_content=False)
 
     def test_get_object(self):
-        server = eventlet.listen(('127.0.0.1', 0))
-        (ip, port) = server.getsockname()
-
         content = 'Hello, World!'
 
-        def hello_world(env, start_response):
+        def my_app(env, start_response):
             start_response('200 OK', [('Content-Type', 'text/plain')])
             return [content]
 
-        t = eventlet.spawn(eventlet.wsgi.server, server, hello_world)
+        with utils.WSGIServer(my_app) as server:
+            with mock.patch('eventlet.spawn'):
+                sproxyd_client = SproxydClient(['http://%s:%d/path'
+                                                % (server.ip, server.port)])
+            obj = sproxyd_client.get_object('ignored')
 
-        with mock.patch('eventlet.spawn'):
-            sproxyd_client = SproxydClient(['http://%s:%d/path' % (ip, port)])
-        obj = sproxyd_client.get_object('ignored')
+            self.assertEqual(content, obj.next())
+            # Assert that `obj` is an Iterable
+            self.assertRaises(StopIteration, obj.next)
 
-        self.assertEqual(content, obj.next())
-        # Assert that `obj` is an Iterable
-        self.assertRaises(StopIteration, obj.next)
-        t.kill()
+    def test_put_object_with_metadata(self):
+        obj_name = utils.get_random_unicode(10).encode('utf-8')
+        obj_metadata = utils.get_random_unicode(128).encode('utf-8')
+        obj_body = utils.get_random_unicode(1024).encode('utf-8')
+
+        def my_app(env, start_response):
+            self.assertEqual('PUT', env['REQUEST_METHOD'])
+            self.assertEqual('/path/' + obj_name, env['PATH_INFO'])
+
+            data = env['wsgi.input'].read()
+            self.assertEqual(obj_body, data)
+
+            actual_metadata = pickle.loads(base64.b64decode(env['HTTP_X_SCAL_USERMD']))
+            self.assertEqual(obj_metadata, actual_metadata)
+
+            start_response('200 OK', [('Content-Type', 'text/plain')])
+            return []
+
+        with utils.WSGIServer(my_app) as server:
+            with mock.patch('eventlet.spawn'):
+                sproxyd_client = SproxydClient(['http://%s:%d/path'
+                                                % (server.ip, server.port)])
+
+            sproxyd_client.put_object(obj_name, obj_body, obj_metadata)
+
+    @mock.patch('urllib3.connectionpool.HTTPConnectionPool._put_conn')
+    def test_get_http_conn_for_put(self, mock_put_conn):
+        obj_name = utils.get_random_unicode(10).encode('utf-8')
+        obj_metadata = utils.get_random_unicode(128).encode('utf-8')
+        obj_body = utils.get_random_unicode(1024).encode('utf-8')
+
+        def my_app(env, start_response):
+            self.assertEqual('PUT', env['REQUEST_METHOD'])
+            self.assertEqual('/path/' + obj_name, env['PATH_INFO'])
+
+            data = env['wsgi.input'].read()
+            self.assertEqual(obj_body, data)
+
+            actual_metadata = pickle.loads(base64.b64decode(env['HTTP_X_SCAL_USERMD']))
+            self.assertEqual(obj_metadata, actual_metadata)
+
+            start_response('200 OK', [('Content-Type', 'text/plain')])
+            return [obj_body]
+
+        with utils.WSGIServer(my_app) as server:
+            with mock.patch('eventlet.spawn'):
+                sproxyd_client = SproxydClient(['http://%s:%d/path'
+                                                % (server.ip, server.port)])
+
+            headers = {
+                'x-scal-usermd': base64.b64encode(pickle.dumps(obj_metadata)),
+                'Content-Length': str(len(obj_body))
+            }
+
+            conn, release_conn = sproxyd_client.get_http_conn_for_put(obj_name,
+                                                                      headers)
+            conn.send(obj_body)
+            resp = conn.getresponse()
+            self.assertEqual(obj_body, resp.read())
+
+            release_conn()
+
+        mock_put_conn.assert_called_once_with(conn)
+
+    @mock.patch('eventlet.spawn', mock.Mock())
+    @mock.patch('httplib.HTTPConnection.close')
+    @mock.patch('socket.socket')
+    def test_get_http_conn_for_put_connection_timeout(self, mock_socket, mock_close):
+        timeout = 0.1
+        mock_socket().connect.side_effect = socket.timeout
+
+        # If we set 'localhost' here, the test fails on CentOS
+        # I think it's because, on CentOS, localhost could resolve to
+        # [::1, 127.0.0.1]
+        sproxyd_client = SproxydClient(['http://127.0.0.1:81/path'],
+                                       conn_timeout=timeout)
+
+        regex = r'^.*connect timeout=%s.*$' % timeout
+        utils.assertRaisesRegexp(SproxydException, regex,
+                                 sproxyd_client.get_http_conn_for_put, '_')
+        mock_socket().settimeout.assert_called_once_with(timeout)
+        mock_socket().connect.assert_called_once_with(('127.0.0.1', 81))
+        mock_close.assert_called_once_with()
 
     @mock.patch('eventlet.spawn')
     def test_del_instance(self, mock_spawn):

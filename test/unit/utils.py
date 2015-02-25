@@ -15,11 +15,35 @@
 
 """A collection of functions that helps running unit tests"""
 
+import eventlet.wsgi
 import functools
+import itertools
+import random
 import re
 import unittest
 
 import nose.plugins.skip
+
+UNICODE_CHARS = [unichr(i) for i in itertools.chain(xrange(0x0370, 0x377), xrange(0x0384, 0x038a))]
+
+
+class WSGIServer(object):
+    """Start a WSGI Web server."""
+    def __init__(self, application):
+        self.application = application
+        self._thread = None
+
+        self.server = eventlet.listen(('127.0.0.1', 0))
+        (self.ip, self.port) = self.server.getsockname()
+
+    def __enter__(self):
+        self._thread = eventlet.spawn(eventlet.wsgi.server, self.server,
+                                      self.application)
+        return self
+
+    def __exit__(self, exc_ty, exc_val, tb):
+        self._thread.kill()
+        self.server.close()
 
 
 def skipIf(condition, reason):
@@ -58,3 +82,8 @@ def assertRaisesRegexp(expected_exception, expected_regexp,
         else:
             excName = str(expected_exception)
         raise unittest.TestCase.failureException("%s not raised" % excName)
+
+
+def get_random_unicode(length):
+    """Get a random Unicode string."""
+    return u''.join(random.choice(UNICODE_CHARS) for _ in xrange(length))
