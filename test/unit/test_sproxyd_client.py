@@ -132,8 +132,9 @@ class TestSproxydClient(unittest.TestCase):
 
         t = eventlet.spawn(run_server1, server1)
         timeout = 0.01
-        sproxyd_client = SproxydClient(['http://%s:%d/path' % (ip, port)],
-                                       proxy_timeout=timeout)
+        with mock.patch('eventlet.spawn'):
+            sproxyd_client = SproxydClient(['http://%s:%d/path' % (ip, port)],
+                                           proxy_timeout=timeout)
 
         regex = r'^.*read timeout=%s.*$' % timeout
         utils.assertRaisesRegexp(urllib3.exceptions.ReadTimeoutError, regex,
@@ -256,7 +257,8 @@ class TestSproxydClient(unittest.TestCase):
 
         t = eventlet.spawn(eventlet.wsgi.server, server, hello_world)
 
-        sproxyd_client = SproxydClient(['http://%s:%d/path' % (ip, port)])
+        with mock.patch('eventlet.spawn'):
+            sproxyd_client = SproxydClient(['http://%s:%d/path' % (ip, port)])
         obj = sproxyd_client.get_object('ignored')
 
         self.assertEqual(content, obj.next())
