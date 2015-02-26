@@ -16,11 +16,14 @@
 import base64
 import eventlet
 import functools
+import httplib
 import itertools
 import logging
 import pickle
+import socket
 import types
 import urllib
+import urlparse
 
 from scality_sproxyd_client import exceptions
 from scality_sproxyd_client import utils
@@ -139,7 +142,8 @@ class SproxydClient(object):
         return ret % (self.sproxyd_urls_set, self.conn_timeout,
                       self.proxy_timeout)
 
-    def _do_http(self, caller_name, handlers, method, path, headers=None):
+    def _do_http(self, caller_name, handlers, method, path, headers=None,
+                 body=None):
         '''Common code for handling a single HTTP request
 
         Handler functions passed through `handlers` will be called with the HTTP
@@ -155,6 +159,8 @@ class SproxydClient(object):
         :type path: `str`
         :param headers: HTTP request headers
         :type headers: `dict` of `str` to `str`
+        :param body: HTTP request body
+        :type body: `str` or `object` with a `read(blocksize)` method
 
         :raises SproxydHTTPException: Received an unhandled HTTP response
         '''
@@ -172,7 +178,7 @@ class SproxydClient(object):
                 http_reason=response.reason)
 
         response = self.http_pools.request(method, full_url, headers=headers,
-                                           preload_content=False)
+                                           body=body, preload_content=False)
         handler = handlers.get(response.status, unexpected_http_status)
         result = handler(response)
 
@@ -254,3 +260,58 @@ class SproxydClient(object):
         }
 
         return self._do_http('get_object', handlers, 'GET', name, headers)
+
+    def put_object(self, name, body, user_metadata=None):
+        """Connect to sproxyd and put an object."""
+
+        # The Content-Length is automatically set to the correct value.
+        # See `httplib.HTTPConnection.request`
+        headers = {}
+        if user_metadata:
+            headers['x-scal-usermd'] = base64.b64encode(pickle.dumps(user_metadata))
+
+        handlers = {
+            200: lambda _: None,
+        }
+
+        return self._do_http('put_object', handlers, 'PUT', name,
+                             headers=headers, body=body)
+
+    def get_http_conn_for_put(self, name, headers=None):
+        full_url = self.sproxyd_urls.next() + urllib.quote(name)
+        url_pieces = urlparse.urlparse(full_url)
+        conn_pool = self.http_pools.connection_from_host(url_pieces.hostname,
+                                                         url_pieces.port,
+                                                         url_pieces.scheme)
+        timeout_obj = conn_pool.timeout.clone()
+
+        conn = None
+        try:
+            # Request a connection from the queue.
+            conn = conn_pool._get_conn()
+            conn_pool.num_requests += 1
+
+            conn.timeout = timeout_obj.connect_timeout
+
+            conn.putrequest('PUT', url_pieces.path,
+                            skip_host=(headers and 'Host' in headers))
+            if headers:
+                for header, value in headers.iteritems():
+                    conn.putheader(header, str(value))
+            conn.endheaders()
+
+        except (httplib.HTTPException, socket.error,
+                urllib3.exceptions.TimeoutError) as ex:
+            if conn:
+                # Discard the connection for these exceptions. It will be
+                # be replaced during the next _get_conn() call.
+                conn.close()
+                conn = None
+            msg = "Error when trying to PUT %s : %r" % (full_url, ex)
+            self.logger.info(msg)
+            raise exceptions.SproxydException(msg)
+
+        def release_conn():
+            conn_pool._put_conn(conn)
+
+        return (conn, release_conn)
