@@ -109,6 +109,18 @@ class TestSproxydClient(unittest.TestCase):
         self.assertFalse('http://host:81/path/' in sproxyd_client.sproxyd_urls_set)
         self.assertEqual([], list(sproxyd_client.sproxyd_urls))
 
+    @mock.patch('eventlet.spawn', mock.Mock())
+    def test_get_url_for_object(self):
+        sproxyd_client = SproxydClient(['http://host:81/path/'])
+        self.assertEqual('http://host:81/path/' + urllib.quote("ob j"),
+                         sproxyd_client.get_url_for_object("ob j"))
+
+    @mock.patch('eventlet.spawn', mock.Mock())
+    def test_get_url_for_object_no_endpoint(self):
+        sproxyd_client = SproxydClient([])
+        self.assertRaises(SproxydException,
+                          sproxyd_client.get_url_for_object, "")
+
     @mock.patch('socket.socket.connect', side_effect=socket.timeout)
     def test_do_http_connection_timeout(self, mock_http_connect):
         timeout = 0.01

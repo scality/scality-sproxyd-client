@@ -142,6 +142,19 @@ class SproxydClient(object):
         return ret % (self.sproxyd_urls_set, self.conn_timeout,
                       self.proxy_timeout)
 
+    def get_url_for_object(self, name):
+        '''Get an absolute URL from which the object `name` can be accessed.
+
+        Only healthy Sproxyd endpoints are concidered to form the base object
+        path. The object `name` is properly escaped by `urllib.quote` which
+        preserves '/' by default.
+        '''
+        try:
+            sproxyd_url = self.sproxyd_urls.next()
+        except StopIteration:
+            raise exceptions.SproxydException("No Sproxyd endpoint alive")
+        return sproxyd_url + urllib.quote(name)
+
     def _do_http(self, caller_name, handlers, method, path, headers=None,
                  body=None):
         '''Common code for handling a single HTTP request
@@ -165,8 +178,7 @@ class SproxydClient(object):
         :raises SproxydHTTPException: Received an unhandled HTTP response
         '''
 
-        sproxyd_url = self.sproxyd_urls.next()
-        full_url = sproxyd_url + urllib.quote(path)
+        full_url = self.get_url_for_object(path)
 
         def unexpected_http_status(response):
             message = response.read()
@@ -271,7 +283,7 @@ class SproxydClient(object):
                              headers=headers, body=body)
 
     def get_http_conn_for_put(self, name, headers=None):
-        full_url = self.sproxyd_urls.next() + urllib.quote(name)
+        full_url = self.get_url_for_object(name)
         url_pieces = urlparse.urlparse(full_url)
         conn_pool = self.http_pools.connection_from_host(url_pieces.hostname,
                                                          url_pieces.port,
