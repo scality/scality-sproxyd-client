@@ -236,13 +236,15 @@ class TestSproxydClient(unittest.TestCase):
     @mock.patch('eventlet.spawn')
     @mock.patch('urllib3.PoolManager.request',
                 return_value=urllib3.response.HTTPResponse(status=200))
-    def test_del_object(self, mock_http, _):
+    def test_del_object_with_headers(self, mock_http, _):
+        headers = {'k': 'v'}
+
         sproxyd_client = SproxydClient(['http://host:81/path/'])
-        sproxyd_client.del_object('obj_1')
+        sproxyd_client.del_object('obj_1', headers)
 
         mock_http.assert_called_once_with('DELETE',
                                           'http://host:81/path/obj_1',
-                                          headers=None, body=None, preload_content=False)
+                                          headers=headers, body=None, preload_content=False)
 
     def test_get_object(self):
         content = 'Hello, World!'
@@ -261,7 +263,7 @@ class TestSproxydClient(unittest.TestCase):
             # Assert that `obj` is an Iterable
             self.assertRaises(StopIteration, obj.next)
 
-    def test_put_object_with_metadata(self):
+    def test_put_object_with_headers(self):
         obj_name = utils.get_random_unicode(10).encode('utf-8')
         obj_metadata = utils.get_random_unicode(128).encode('utf-8')
         obj_body = utils.get_random_unicode(1024).encode('utf-8')
@@ -273,8 +275,7 @@ class TestSproxydClient(unittest.TestCase):
             data = env['wsgi.input'].read()
             self.assertEqual(obj_body, data)
 
-            actual_metadata = pickle.loads(base64.b64decode(env['HTTP_X_SCAL_USERMD']))
-            self.assertEqual(obj_metadata, actual_metadata)
+            self.assertEqual(obj_metadata, env['HTTP_X_SCAL_USERMD'])
 
             start_response('200 OK', [('Content-Type', 'text/plain')])
             return []
@@ -284,7 +285,8 @@ class TestSproxydClient(unittest.TestCase):
                 sproxyd_client = SproxydClient(['http://%s:%d/path'
                                                 % (server.ip, server.port)])
 
-            sproxyd_client.put_object(obj_name, obj_body, obj_metadata)
+            sproxyd_client.put_object(obj_name, obj_body,
+                                      {'x-scal-usermd': obj_metadata})
 
     @mock.patch('urllib3.connectionpool.HTTPConnectionPool._put_conn')
     def test_get_http_conn_for_put(self, mock_put_conn):
