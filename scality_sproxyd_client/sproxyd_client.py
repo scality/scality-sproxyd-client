@@ -233,18 +233,14 @@ class SproxydClient(object):
 
         return result
 
-    def del_object(self, name):
+    def del_object(self, name, headers=None):
         """Connect to sproxyd and delete object."""
 
-        def handle_200_or_404(response):
-            return None
-
         handlers = {
-            200: handle_200_or_404,
-            404: handle_200_or_404,
+            200: lambda _: None,
         }
 
-        return self._do_http('del_object', handlers, 'DELETE', name)
+        return self._do_http('del_object', handlers, 'DELETE', name, headers)
 
     def get_object(self, name, headers=None):
         """Connect to sproxyd and get an object."""
@@ -261,14 +257,11 @@ class SproxydClient(object):
 
         return self._do_http('get_object', handlers, 'GET', name, headers)
 
-    def put_object(self, name, body, user_metadata=None):
+    def put_object(self, name, body, headers=None):
         """Connect to sproxyd and put an object."""
 
-        # The Content-Length is automatically set to the correct value.
-        # See `httplib.HTTPConnection.request`
-        headers = {}
-        if user_metadata:
-            headers['x-scal-usermd'] = base64.b64encode(pickle.dumps(user_metadata))
+        # The Content-Length is automatically added to the headers and
+        # set to the correct value. See `httplib.HTTPConnection.request`
 
         handlers = {
             200: lambda _: None,
