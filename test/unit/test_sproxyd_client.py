@@ -198,7 +198,8 @@ class TestSproxydClient(unittest.TestCase):
 
         mock_http.assert_called_once_with('HEAD',
                                           'http://host:81/path/obj_1',
-                                          headers=None, body=None, preload_content=False)
+                                          headers=None, body=None,
+                                          preload_content=False)
         self.assertEqual('fake', metadata)
 
     @mock.patch('eventlet.spawn')
@@ -244,7 +245,8 @@ class TestSproxydClient(unittest.TestCase):
 
         mock_http.assert_called_once_with('DELETE',
                                           'http://host:81/path/obj_1',
-                                          headers=headers, body=None, preload_content=False)
+                                          headers=headers, body=None,
+                                          preload_content=False)
 
     def test_get_object(self):
         content = 'Hello, World!'
