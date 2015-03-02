@@ -198,6 +198,22 @@ class TestSproxydClient(unittest.TestCase):
 
         self.assertEqual(3, mock_response.read.call_count)
 
+    @mock.patch('eventlet.spawn', mock.Mock())
+    def test_head_with_headers(self):
+        sproxyd_client = SproxydClient(['http://host:81/path/'])
+
+        headers = {'k': 'v'}
+        mock_response = urllib3.response.HTTPResponse(status=200,
+                                                      headers=headers)
+        with mock.patch('urllib3.PoolManager.request',
+                        return_value=mock_response) as mock_http:
+            returned_headers = sproxyd_client.head('_', headers)
+
+        mock_http.assert_called_once_with('HEAD', 'http://host:81/path/_',
+                                          headers=headers, body=None,
+                                          preload_content=False)
+        self.assertEqual(headers, returned_headers)
+
     @mock.patch('eventlet.spawn')
     @mock.patch('urllib3.PoolManager.request')
     def test_get_meta_on_200(self, mock_http, _):
@@ -221,6 +237,14 @@ class TestSproxydClient(unittest.TestCase):
         sproxyd_client = SproxydClient(['http://host:81/path/'])
 
         self.assertTrue(sproxyd_client.get_meta('object_name_1') is None)
+
+    @mock.patch('eventlet.spawn', mock.Mock())
+    @mock.patch('urllib3.PoolManager.request',
+                return_value=urllib3.response.HTTPResponse(status=413))
+    def test_get_meta_on_413(self, mock_http):
+        sproxyd_client = SproxydClient(['http://host:81/path/'])
+
+        self.assertRaises(SproxydHTTPException, sproxyd_client.get_meta, '_')
 
     @mock.patch('eventlet.spawn')
     @mock.patch('urllib3.PoolManager.request',

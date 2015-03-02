@@ -207,23 +207,27 @@ class SproxydClient(object):
 
         return result
 
-    def get_meta(self, name):
-        """Open a connection and get usermd."""
-
-        def handle_200(response):
-            header = response.getheader('x-scal-usermd')
-            pickled = base64.b64decode(header)
-            return pickle.loads(pickled)
-
-        def handle_404(response):
-            return None
+    def head(self, name, headers=None):
+        """Performs a HEAD request and returns the HTTP headers."""
 
         handlers = {
-            200: handle_200,
-            404: handle_404,
+            200: lambda response: response.headers,
         }
 
-        return self._do_http('get_meta', handlers, 'HEAD', name)
+        return self._do_http('head', handlers, 'HEAD', name, headers)
+
+    def get_meta(self, name):
+        """Get the user metadata for object `name`."""
+
+        try:
+            usermd = self.head(name)['x-scal-usermd']
+        except exceptions.SproxydHTTPException as exc:
+            if exc.http_status == 404:
+                return None
+            raise
+
+        pickled = base64.b64decode(usermd)
+        return pickle.loads(pickled)
 
     def put_meta(self, name, metadata):
         """Connect to sproxyd and put usermd."""
