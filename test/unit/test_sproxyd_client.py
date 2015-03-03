@@ -169,7 +169,7 @@ class TestSproxydClient(unittest.TestCase):
     @mock.patch('urllib3.PoolManager.request',
                 return_value=urllib3.response.HTTPResponse(status=200))
     def test_do_http(self, mock_http, _):
-        mock_handler = mock.Mock()
+        mock_handler = mock.Mock(return_value=(None, True))
 
         sproxyd_client = SproxydClient(['http://host:81/'])
         method = 'HTTP_METH'
@@ -192,11 +192,25 @@ class TestSproxydClient(unittest.TestCase):
         mock_response.status = 200
         mock_response.read.side_effect = ['blah', 'blah', '']
 
-        handlers = {200: lambda response: None}
+        handlers = {200: lambda response: (None, True)}
         with mock.patch('urllib3.PoolManager.request', return_value=mock_response):
             sproxyd_client._do_http('caller1', handlers, 'METHOD', '/')
 
         self.assertEqual(3, mock_response.read.call_count)
+        mock_response.release_conn.assert_called_once_with()
+
+    @mock.patch('eventlet.spawn', mock.Mock())
+    @mock.patch('scality_sproxyd_client.sproxyd_client.drain_connection')
+    def test_do_http_dont_drain_connection(self, mock_drain):
+        sproxyd_client = SproxydClient(['http://host:81/path/'])
+        mock_response = mock.Mock(status=200)
+
+        handlers = {200: lambda response: (None, False)}
+        with mock.patch('urllib3.PoolManager.request', return_value=mock_response):
+            sproxyd_client._do_http('caller1', handlers, 'METHOD', '/')
+
+        self.assertFalse(mock_drain.called)
+        self.assertFalse(mock_response.release_conn.called)
 
     @mock.patch('eventlet.spawn', mock.Mock())
     def test_head_with_headers(self):
