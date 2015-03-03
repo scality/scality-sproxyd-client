@@ -157,3 +157,30 @@ def test_get_urllib3_with_different_versions():
 
     for version in ('0.1', '9.9'):
         yield assert_import_specific_called, version
+
+
+class TestSplitList(unittest.TestCase):
+    def test_empty_string(self):
+        self.assertEqual(
+            [],
+            list(utils.split_list('')))
+
+    def test_basic(self):
+        self.assertEqual(
+            ['1', '2', '3'],
+            list(utils.split_list('1, 2, 3')))
+
+    def test_space_prefix(self):
+        self.assertEqual(
+            ['1', '2'],
+            list(utils.split_list('   1, 2')))
+
+    def test_space_suffix(self):
+        self.assertEqual(
+            ['1', '2'],
+            list(utils.split_list('1, 2   ')))
+
+    def test_words(self):
+        self.assertEqual(
+            ['one', 'two', 'three'],
+            list(utils.split_list(' one, two, three ')))
