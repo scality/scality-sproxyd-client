@@ -21,7 +21,6 @@ import itertools
 import logging
 import pickle
 import socket
-import types
 import urllib
 import urlparse
 
@@ -192,11 +191,10 @@ class SproxydClient(object):
         response = self.http_pools.request(method, full_url, headers=headers,
                                            body=body, preload_content=False)
         handler = handlers.get(response.status, unexpected_http_status)
-        result = handler(response)
+        result, should_release_conn = handler(response)
 
-        # If the handler returns a generator, it must handle the connection
-        # cleanup.
-        if not isinstance(result, types.GeneratorType):
+        # If the handler says it's safe to release the connection now
+        if should_release_conn:
             try:
                 drain_connection(response)
                 response.release_conn()
@@ -211,7 +209,7 @@ class SproxydClient(object):
         """Performs a HEAD request and returns the HTTP headers."""
 
         handlers = {
-            200: lambda response: response.headers,
+            200: lambda response: (response.headers, True)
         }
 
         return self._do_http('head', handlers, 'HEAD', name, headers)
@@ -240,7 +238,7 @@ class SproxydClient(object):
         }
 
         handlers = {
-            200: lambda _: None,
+            200: lambda _: (None, True),
         }
 
         result = self._do_http('put_meta', handlers, 'PUT', name, headers)
@@ -253,7 +251,7 @@ class SproxydClient(object):
         """Connect to sproxyd and delete object."""
 
         handlers = {
-            200: lambda _: None,
+            200: lambda _: (None, True),
         }
 
         return self._do_http('del_object', handlers, 'DELETE', name, headers)
@@ -262,9 +260,11 @@ class SproxydClient(object):
         """Connect to sproxyd and get an object."""
 
         def handle_200_or_206(response):
-            for chunk in response.stream(amt=1024 * 64):
-                yield chunk
-            response.release_conn()
+            def gen():
+                for chunk in response.stream(amt=1024 * 64):
+                    yield chunk
+                response.release_conn()
+            return gen(), False
 
         handlers = {
             200: handle_200_or_206,
@@ -280,7 +280,7 @@ class SproxydClient(object):
         # set to the correct value. See `httplib.HTTPConnection.request`
 
         handlers = {
-            200: lambda _: None,
+            200: lambda _: (None, True),
         }
 
         return self._do_http('put_object', handlers, 'PUT', name,
