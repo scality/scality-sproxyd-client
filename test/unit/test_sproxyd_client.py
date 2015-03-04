@@ -37,6 +37,12 @@ from . import utils
 class TestSproxydClient(unittest.TestCase):
     """Tests for scality_sproxyd_client.sproxyd_client.SproxydClient"""
 
+    def test_init_with_no_endpoint(self):
+        self.assertRaises(ValueError, SproxydClient, [])
+
+    def test_init_with_invalid_endpoint(self):
+        self.assertRaises(ValueError, SproxydClient, ['invalid://'])
+
     @mock.patch('eventlet.spawn')
     def test_init_with_default_timeout_values(self, _):
         sproxyd_client = SproxydClient(['http://host:81/path/'])
@@ -60,6 +66,12 @@ class TestSproxydClient(unittest.TestCase):
     def test_init_sproxyd_hosts(self, _):
         hosts = set(['http://host1:81/path1/', 'http://host2:82/path2/'])
         sproxyd_client = SproxydClient(hosts)
+        self.assertEqual(hosts, sproxyd_client.sproxyd_urls_set)
+
+    @mock.patch('eventlet.spawn')
+    def test_init_sproxyd_hosts_with_iterator(self, _):
+        hosts = frozenset(['http://h1:81/path1/', 'http://h2:82/path2/'])
+        sproxyd_client = SproxydClient(iter(hosts))
         self.assertEqual(hosts, sproxyd_client.sproxyd_urls_set)
 
     @mock.patch('eventlet.spawn')
@@ -116,8 +128,9 @@ class TestSproxydClient(unittest.TestCase):
                          sproxyd_client.get_url_for_object("ob j"))
 
     @mock.patch('eventlet.spawn', mock.Mock())
-    def test_get_url_for_object_no_endpoint(self):
-        sproxyd_client = SproxydClient([])
+    def test_get_url_for_object_no_endpoint_alive(self):
+        sproxyd_client = SproxydClient(['http://host:81/path/'])
+        sproxyd_client.on_sproxyd_down('http://host:81/path/')
         self.assertRaises(SproxydException,
                           sproxyd_client.get_url_for_object, "")
 

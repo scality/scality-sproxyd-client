@@ -63,6 +63,11 @@ class SproxydClient(object):
         :type logger: `logging.Logger`
         '''
 
+        sproxyd_urls_list = list(sproxyd_urls)
+        if not sproxyd_urls_list:
+            raise ValueError("At least one Sproxyd endpoint "
+                             "must be provided")
+
         if logger:
             self.logger = logger
 
@@ -75,7 +80,13 @@ class SproxydClient(object):
         self.healthcheck_threads = []
         self.sproxyd_urls_set = set()
 
-        for sproxyd_url in sproxyd_urls:
+        for sproxyd_url in sproxyd_urls_list:
+            pieces = urlparse.urlparse(sproxyd_url)
+            if not pieces.scheme or pieces.scheme not in ('http', 'https'):
+                raise ValueError("'%s' is not a valid Sproxyd endpoint "
+                                 "(doesn't start with http(s)?://)"
+                                 % sproxyd_url)
+
             sproxyd_url = sproxyd_url.rstrip('/') + '/'
             self.sproxyd_urls_set.add(sproxyd_url)
 
@@ -86,8 +97,7 @@ class SproxydClient(object):
             thread = eventlet.spawn(utils.monitoring_loop, ping, on_up, on_down)
             self.healthcheck_threads.append(thread)
 
-        sproxyd_urls_list = list(self.sproxyd_urls_set)
-        self.sproxyd_urls = itertools.cycle(sproxyd_urls_list)
+        self.sproxyd_urls = itertools.cycle(self.sproxyd_urls_set)
 
         timeout = urllib3.Timeout(connect=self.conn_timeout,
                                   read=self.proxy_timeout)
