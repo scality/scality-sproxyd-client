@@ -257,14 +257,14 @@ class SproxydClient(object):
         return self._do_http('del_object', handlers, 'DELETE', name, headers)
 
     def get_object(self, name, headers=None):
-        """Connect to sproxyd and get an object."""
+        """Connect to sproxyd and returns an object and its properties."""
 
         def handle_200_or_206(response):
             def gen():
                 for chunk in response.stream(amt=1024 * 64):
                     yield chunk
                 response.release_conn()
-            return gen(), False
+            return (response.headers, gen()), False
 
         handlers = {
             200: handle_200_or_206,

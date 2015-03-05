@@ -309,8 +309,10 @@ class TestSproxydClient(unittest.TestCase):
             with mock.patch('eventlet.spawn'):
                 sproxyd_client = SproxydClient(['http://%s:%d/path'
                                                 % (server.ip, server.port)])
-            obj = sproxyd_client.get_object('ignored')
+            headers, obj = sproxyd_client.get_object('ignored')
 
+            self.assertTrue('content-length' in headers)
+            self.assertEqual(len(content), int(headers['content-length']))
             self.assertEqual(content, obj.next())
             # Assert that `obj` is an Iterable
             self.assertRaises(StopIteration, obj.next)
