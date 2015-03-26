@@ -21,6 +21,7 @@ import pickle
 import socket
 import unittest
 import urllib
+import urlparse
 import weakref
 
 import eventlet
@@ -46,39 +47,41 @@ class TestSproxydClient(unittest.TestCase):
     @mock.patch('eventlet.spawn')
     def test_init_with_default_timeout_values(self, _):
         sproxyd_client = SproxydClient(['http://host:81/path/'])
-        self.assertEqual(10, sproxyd_client.conn_timeout)
-        self.assertEqual(3, sproxyd_client.proxy_timeout)
+        self.assertEqual(10, sproxyd_client._conn_timeout)
+        self.assertEqual(3, sproxyd_client._proxy_timeout)
 
     @mock.patch('eventlet.spawn')
     def test_init_with_custom_timeout_values(self, _):
         sproxyd_client = SproxydClient(['http://host:81/path/'],
                                        conn_timeout=42.1, proxy_timeout=4242.1)
-        self.assertEqual(42.1, sproxyd_client.conn_timeout)
-        self.assertEqual(4242.1, sproxyd_client.proxy_timeout)
-
-    @mock.patch('eventlet.spawn')
-    def test_init_sproxyd_url_has_slash(self, _):
-        sproxyd_client = SproxydClient(['http://host:81/no_slash'])
-        self.assertEqual('http://host:81/no_slash/',
-                         sproxyd_client.sproxyd_urls.next())
+        self.assertEqual(42.1, sproxyd_client._conn_timeout)
+        self.assertEqual(4242.1, sproxyd_client._proxy_timeout)
 
     @mock.patch('eventlet.spawn')
     def test_init_sproxyd_hosts(self, _):
         hosts = set(['http://host1:81/path1/', 'http://host2:82/path2/'])
         sproxyd_client = SproxydClient(hosts)
-        self.assertEqual(hosts, sproxyd_client.sproxyd_urls_set)
+        self.assertEqual(
+            frozenset(urlparse.urlparse(host) for host in hosts),
+            sproxyd_client._endpoints)
 
     @mock.patch('eventlet.spawn')
     def test_init_sproxyd_hosts_with_iterator(self, _):
-        hosts = frozenset(['http://h1:81/path1/', 'http://h2:82/path2/'])
+        hosts = ['http://h1:81/path1/', 'http://h2:82/path2/']
         sproxyd_client = SproxydClient(iter(hosts))
-        self.assertEqual(hosts, sproxyd_client.sproxyd_urls_set)
+        self.assertEqual(
+            frozenset(urlparse.urlparse(host) for host in hosts),
+            sproxyd_client._endpoints)
 
-    @mock.patch('eventlet.spawn')
+    # In this test, `eventlet.spawn` must be mocked with a specific side-effect,
+    # because in the default case its result value would always be the same
+    # `MagicMock`, and as a result the cardinality of the `_healthcheck_threads`
+    # set would be 1 instead of the expected 2.
+    @mock.patch('eventlet.spawn', side_effect=lambda *_: mock.MagicMock())
     def test_init_monitoring_threads(self, _):
         hosts = ['http://host1:81/path/', 'http://host2:82/path/']
         sproxyd_client = SproxydClient(hosts)
-        self.assertEqual(2, len(sproxyd_client.healthcheck_threads))
+        self.assertEqual(2, len(sproxyd_client._healthcheck_threads))
 
     @mock.patch('eventlet.spawn')
     @mock.patch('urllib3.PoolManager.request',
@@ -86,7 +89,7 @@ class TestSproxydClient(unittest.TestCase):
     def test_ping_with_bad_sproxyd_conf(self, request_mock, _):
         mock_logger = mock.Mock()
         sproxyd_client = SproxydClient(['http://host:81/path/'], logger=mock_logger)
-        ping_result = sproxyd_client.ping('http://ignored')
+        ping_result = sproxyd_client._ping('http://ignored')
 
         self.assertFalse(ping_result)
         self.assertTrue(mock_logger.warning.called)
@@ -99,7 +102,7 @@ class TestSproxydClient(unittest.TestCase):
     def test_ping_with_unexpected_exc(self, urlopen_mock, _):
         mock_logger = mock.Mock()
         sproxyd_client = SproxydClient(['http://host:81/path/'], logger=mock_logger)
-        ping_result = sproxyd_client.ping('http://ignored')
+        ping_result = sproxyd_client._ping('http://ignored')
 
         self.assertFalse(ping_result)
         self.assertTrue(mock_logger.exception.called)
@@ -109,17 +112,17 @@ class TestSproxydClient(unittest.TestCase):
     @mock.patch('eventlet.spawn')
     def test_on_sproxyd_up(self, _):
         sproxyd_client = SproxydClient(['http://host1:81/path/'])
-        sproxyd_url_2 = 'http://host2:81/path/'
-        sproxyd_client.on_sproxyd_up(sproxyd_url_2)
-        self.assertTrue(sproxyd_url_2 in sproxyd_client.sproxyd_urls_set)
-        self.assertTrue(sproxyd_url_2 in itertools.islice(sproxyd_client.sproxyd_urls, 2))
+        sproxyd_url_2 = urlparse.urlparse('http://host2:81/path/')
+        sproxyd_client._on_sproxyd_up(sproxyd_url_2)
+        self.assertTrue(sproxyd_url_2 in sproxyd_client._alive)
+        self.assertTrue(sproxyd_url_2 in itertools.islice(sproxyd_client._cycle, 2))
 
     @mock.patch('eventlet.spawn')
     def test_on_sproxyd_down(self, _):
         sproxyd_client = SproxydClient(['http://host:81/path/'])
-        sproxyd_client.on_sproxyd_down('http://host:81/path/')
-        self.assertFalse('http://host:81/path/' in sproxyd_client.sproxyd_urls_set)
-        self.assertEqual([], list(sproxyd_client.sproxyd_urls))
+        sproxyd_client._on_sproxyd_down(urlparse.urlparse('http://host:81/path/'))
+        self.assertFalse('http://host:81/path/' in sproxyd_client._alive)
+        self.assertEqual([], list(sproxyd_client._cycle))
 
     @mock.patch('eventlet.spawn', mock.Mock())
     def test_get_url_for_object(self):
@@ -130,7 +133,7 @@ class TestSproxydClient(unittest.TestCase):
     @mock.patch('eventlet.spawn', mock.Mock())
     def test_get_url_for_object_no_endpoint_alive(self):
         sproxyd_client = SproxydClient(['http://host:81/path/'])
-        sproxyd_client.on_sproxyd_down('http://host:81/path/')
+        sproxyd_client._on_sproxyd_down(urlparse.urlparse('http://host:81/path/'))
         self.assertRaises(SproxydException,
                           sproxyd_client.get_url_for_object, "")
 
@@ -438,7 +441,7 @@ def test_ping_when_network_exception_is_raised():
         sproxyd_client = SproxydClient(['http://host:81/path/'], logger=logger)
 
         with mock.patch('urllib3.PoolManager.request', side_effect=expected_exc):
-            ping_result = sproxyd_client.ping('http://ignored/')
+            ping_result = sproxyd_client._ping('http://ignored/')
 
             assert ping_result is False, ('Ping returned %r, '
                                           'not False' % ping_result)
