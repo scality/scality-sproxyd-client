@@ -140,6 +140,14 @@ class TestMonitoringLoop(unittest.TestCase):
             thread.kill()
 
 
+@mock.patch("pkg_resources.get_distribution")
+def test_import_specific(mock_get_distrib):
+    with utils.import_specific('foobar1', 'foobar2'):
+        pass
+    calls = [mock.call('foobar1'), mock.call('foobar2')]
+    assert mock_get_distrib.call_args_list == calls
+
+
 def test_get_urllib3():
     urllib3 = utils.get_urllib3()
     assert isinstance(urllib3, types.ModuleType)
