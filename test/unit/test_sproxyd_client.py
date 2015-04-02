@@ -96,6 +96,19 @@ class TestSproxydClient(unittest.TestCase):
         self.assertEqual(2, len(sproxyd_client._healthcheck_threads))
 
     @mock.patch('eventlet.spawn', mock.Mock())
+    @mock.patch('functools.partial')
+    def test_init_calls_ping_with_correct_url(self, mock_partial):
+        # No slash, 1 slash, 2 slashes
+        hosts = ['http://h1/p1', 'http://h2/p2/', 'http://h3/p3//']
+        SproxydClient(hosts)
+        self.assertTrue(mock.call(mock.ANY, 'http://h1/p1/.conf') in
+                        mock_partial.call_args_list)
+        self.assertTrue(mock.call(mock.ANY, 'http://h2/p2/.conf') in
+                        mock_partial.call_args_list)
+        self.assertTrue(mock.call(mock.ANY, 'http://h3/p3/.conf') in
+                        mock_partial.call_args_list)
+
+    @mock.patch('eventlet.spawn', mock.Mock())
     @mock.patch('urllib3.PoolManager.request',
                 return_value=mock.Mock(data="by_path_enabled=True"))
     def test_ping_with_valid_sproxyd_conf(self, _):
@@ -150,6 +163,15 @@ class TestSproxydClient(unittest.TestCase):
         sproxyd_client = SproxydClient(['http://host:81/path/'])
         self.assertEqual('http://host:81/path/' + urllib.quote("ob j"),
                          sproxyd_client.get_url_for_object("ob j"))
+
+    @mock.patch('eventlet.spawn', mock.Mock())
+    def test_get_url_for_object_wrt_slashes(self):
+        # No slash, 1 slash, 2 slashes
+        hosts = ['http://h1/p', 'http://h2/p/', 'http://h3/p//']
+        sproxyd_client = SproxydClient(hosts)
+        for _ in range(len(hosts)):
+            url = sproxyd_client.get_url_for_object("ob j")
+            self.assertTrue(url.endswith('/p/' + urllib.quote("ob j")))
 
     @mock.patch('eventlet.spawn', mock.Mock())
     def test_get_url_for_object_no_endpoint_alive(self):
