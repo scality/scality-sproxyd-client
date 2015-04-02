@@ -101,11 +101,7 @@ class SproxydClient(object):
         self._cycle = itertools.cycle(self._alive)
 
         for endpoint in self._endpoints:
-            url = '%(scheme)s://%(netloc)s/%(path)s/.conf' % {
-                'scheme': endpoint.scheme,
-                'netloc': endpoint.netloc,
-                'path': endpoint.path.strip('/'),
-            }
+            url = '%s/.conf' % endpoint.geturl().rstrip('/')
 
             ping = functools.partial(self._ping, url)
             on_up = functools.partial(self._on_sproxyd_up, endpoint)
@@ -190,15 +186,7 @@ class SproxydClient(object):
         except StopIteration:
             raise exceptions.SproxydException("No Sproxyd endpoint alive")
 
-        path = endpoint.path.strip('/')
-
-        return '%(scheme)s://%(netloc)s/%(path)s%(maybe_sep)s%(name)s' % {
-            'scheme': endpoint.scheme,
-            'netloc': endpoint.netloc,
-            'path': path,
-            'maybe_sep': '/' if len(path) > 0 else '',
-            'name': urllib.quote(name)
-        }
+        return '%s/%s' % (endpoint.geturl().rstrip('/'), urllib.quote(name))
 
     def _do_http(self, caller_name, handlers, method, path, headers=None,
                  body=None):
