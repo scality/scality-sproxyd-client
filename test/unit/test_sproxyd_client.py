@@ -44,6 +44,18 @@ class TestSproxydClient(unittest.TestCase):
     def test_init_with_invalid_endpoint(self):
         self.assertRaises(ValueError, SproxydClient, ['invalid://'])
 
+    def test_init_with_endpoint_with_params(self):
+        utils.assertRaisesRegexp(ValueError, '.* params .*',
+                                 SproxydClient, ['http://host:81/path;param'])
+
+    def test_init_with_endpoint_with_query(self):
+        utils.assertRaisesRegexp(ValueError, '.* query .*',
+                                 SproxydClient, ['http://host:81/path?q='])
+
+    def test_init_with_endpoint_with_fragment(self):
+        utils.assertRaisesRegexp(ValueError, '.* fragment .*',
+                                 SproxydClient, ['http://host:81/path#frag'])
+
     @mock.patch('eventlet.spawn')
     def test_init_with_default_timeout_values(self, _):
         sproxyd_client = SproxydClient(['http://host:81/path/'])
@@ -83,6 +95,13 @@ class TestSproxydClient(unittest.TestCase):
         sproxyd_client = SproxydClient(hosts)
         self.assertEqual(2, len(sproxyd_client._healthcheck_threads))
 
+    @mock.patch('eventlet.spawn', mock.Mock())
+    @mock.patch('urllib3.PoolManager.request',
+                return_value=mock.Mock(data="by_path_enabled=True"))
+    def test_ping_with_valid_sproxyd_conf(self, _):
+        sproxyd_client = SproxydClient(['http://host:81/path/'])
+        self.assertTrue(sproxyd_client._ping('http://ignored'))
+
     @mock.patch('eventlet.spawn')
     @mock.patch('urllib3.PoolManager.request',
                 side_effect=SproxydConfException(""))
@@ -116,6 +135,7 @@ class TestSproxydClient(unittest.TestCase):
         sproxyd_client._on_sproxyd_up(sproxyd_url_2)
         self.assertTrue(sproxyd_url_2 in sproxyd_client._alive)
         self.assertTrue(sproxyd_url_2 in itertools.islice(sproxyd_client._cycle, 2))
+        self.assertTrue(sproxyd_client.has_alive_endpoints)
 
     @mock.patch('eventlet.spawn')
     def test_on_sproxyd_down(self, _):
@@ -123,6 +143,7 @@ class TestSproxydClient(unittest.TestCase):
         sproxyd_client._on_sproxyd_down(urlparse.urlparse('http://host:81/path/'))
         self.assertFalse('http://host:81/path/' in sproxyd_client._alive)
         self.assertEqual([], list(sproxyd_client._cycle))
+        self.assertFalse(sproxyd_client.has_alive_endpoints)
 
     @mock.patch('eventlet.spawn', mock.Mock())
     def test_get_url_for_object(self):

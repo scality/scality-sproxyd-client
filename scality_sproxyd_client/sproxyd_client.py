@@ -84,13 +84,13 @@ class SproxydClient(object):
             if endpoint.scheme not in ['http', 'https']:
                 raise ValueError(
                     'Unknown endpoint scheme: %r in %r' %
-                    (endpoint.scheme, endpoint))
+                    (endpoint.scheme, endpoint.geturl()))
 
             for attr in ['params', 'query', 'fragment']:
                 if getattr(endpoint, attr):
                     raise ValueError(
                         'Endpoint with %s not supported: %r' %
-                        (attr, endpoint))
+                        (attr, endpoint.geturl()))
 
         self._pool_manager = urllib3.PoolManager(
             len(self._endpoints), retries=False, maxsize=32,
