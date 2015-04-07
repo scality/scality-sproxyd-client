@@ -41,28 +41,29 @@ class SproxydClient(object):
 
     DEFAULT_LOGGER = logging.getLogger(__name__)
 
-    def __init__(self, endpoints, conn_timeout=10.0, proxy_timeout=3.0,
+    def __init__(self, endpoints, conn_timeout=10.0, read_timeout=3.0,
                  logger=None):
         '''Construct an `sproxyd` client
 
         This client connects in a round-robin fashion to online Sproxyd
         connectors provided in the `endpoints` list.
 
-        If `conn_timeout`, `proxy_timeout` or `logger` are not provided, a
+        If `conn_timeout`, `read_timeout` or `logger` are not provided, a
         default value will be used.
 
         :param endpoints: URLs where Sproxyd connectors accept 'by path' queries
         :type endpoints: iterable of `str` or `urlparse.ParseResult`
-        :param conn_timeout: Connection timeout
+        :param conn_timeout: Connection timeout (to establish connection)
         :type conn_timeout: `float`
-        :param proxy_timeout: Proxy timeout
-        :type proxy_timeout: `float`
+        :param read_timeout: Read timeout (for the `recv()` on the socket)
+        :type read_timeout: `float`
         :param logger: Logger used by methods on the instance
         :type logger: `logging.Logger`
         '''
 
         self._conn_timeout = conn_timeout
-        self._proxy_timeout = proxy_timeout
+        self._read_timeout = read_timeout
+
         if logger:
             self._logger = logger
         else:
@@ -95,7 +96,7 @@ class SproxydClient(object):
         self._pool_manager = urllib3.PoolManager(
             len(self._endpoints), retries=False, maxsize=32,
             timeout=urllib3.Timeout(
-                connect=conn_timeout, read=proxy_timeout))
+                connect=conn_timeout, read=self._read_timeout))
 
         self._alive = frozenset(self._endpoints)
         self._cycle = itertools.cycle(self._alive)
@@ -114,7 +115,7 @@ class SproxydClient(object):
         return 'SproxydClient(%s)' % ', '.join('%s=%r' % attr for attr in [
             ('endpoints', self._endpoints),
             ('conn_timeout', self._conn_timeout),
-            ('proxy_timeout', self._proxy_timeout),
+            ('read_timeout', self._read_timeout),
             ('logger', self._logger
                 if self._logger is not self.DEFAULT_LOGGER else None),
         ])
@@ -172,6 +173,16 @@ class SproxydClient(object):
         '''
 
         return len(self._alive) > 0
+
+    @property
+    def conn_timeout(self):
+        '''Get the connection timeout (to establish connection).'''
+        return self._conn_timeout
+
+    @property
+    def read_timeout(self):
+        '''Get the read timeout (recv() on the socket).'''
+        return self._read_timeout
 
     def get_url_for_object(self, name):
         '''Get an absolute URL from which the object `name` can be accessed.
