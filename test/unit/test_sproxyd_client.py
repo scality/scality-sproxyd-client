@@ -59,15 +59,15 @@ class TestSproxydClient(unittest.TestCase):
     @mock.patch('eventlet.spawn')
     def test_init_with_default_timeout_values(self, _):
         sproxyd_client = SproxydClient(['http://host:81/path/'])
-        self.assertEqual(10, sproxyd_client._conn_timeout)
-        self.assertEqual(3, sproxyd_client._proxy_timeout)
+        self.assertEqual(10, sproxyd_client.conn_timeout)
+        self.assertEqual(3, sproxyd_client.read_timeout)
 
     @mock.patch('eventlet.spawn')
     def test_init_with_custom_timeout_values(self, _):
         sproxyd_client = SproxydClient(['http://host:81/path/'],
-                                       conn_timeout=42.1, proxy_timeout=4242.1)
-        self.assertEqual(42.1, sproxyd_client._conn_timeout)
-        self.assertEqual(4242.1, sproxyd_client._proxy_timeout)
+                                       conn_timeout=42.1, read_timeout=4242.1)
+        self.assertEqual(42.1, sproxyd_client.conn_timeout)
+        self.assertEqual(4242.1, sproxyd_client.read_timeout)
 
     @mock.patch('eventlet.spawn')
     def test_init_sproxyd_hosts(self, _):
@@ -180,6 +180,7 @@ class TestSproxydClient(unittest.TestCase):
         self.assertRaises(SproxydException,
                           sproxyd_client.get_url_for_object, "")
 
+    @mock.patch('eventlet.spawn', mock.Mock())
     @mock.patch('socket.socket.connect', side_effect=socket.timeout)
     def test_do_http_connection_timeout(self, mock_http_connect):
         timeout = 0.01
@@ -204,7 +205,7 @@ class TestSproxydClient(unittest.TestCase):
         timeout = 0.01
         with mock.patch('eventlet.spawn'):
             sproxyd_client = SproxydClient(['http://%s:%d/path' % (ip, port)],
-                                           proxy_timeout=timeout)
+                                           read_timeout=timeout)
 
         regex = r'^.*read timeout=%s.*$' % timeout
         utils.assertRaisesRegexp(urllib3.exceptions.ReadTimeoutError, regex,
