@@ -20,7 +20,6 @@ import itertools
 import pickle
 import socket
 import unittest
-import urllib
 import urlparse
 import weakref
 
@@ -161,8 +160,8 @@ class TestSproxydClient(unittest.TestCase):
     @mock.patch('eventlet.spawn', mock.Mock())
     def test_get_url_for_object(self):
         sproxyd_client = SproxydClient(['http://host:81/path/'])
-        self.assertEqual('http://host:81/path/' + urllib.quote("ob j"),
-                         sproxyd_client.get_url_for_object("ob j"))
+        self.assertEqual('http://host:81/path/ob%20j',
+                         sproxyd_client.get_url_for_object("ob%20j"))
 
     @mock.patch('eventlet.spawn', mock.Mock())
     def test_get_url_for_object_wrt_slashes(self):
@@ -170,8 +169,9 @@ class TestSproxydClient(unittest.TestCase):
         hosts = ['http://h1/p', 'http://h2/p/', 'http://h3/p//']
         sproxyd_client = SproxydClient(hosts)
         for _ in range(len(hosts)):
-            url = sproxyd_client.get_url_for_object("ob j")
-            self.assertTrue(url.endswith('/p/' + urllib.quote("ob j")))
+            # The slash in the object name must not be swallowed nor quoted
+            url = sproxyd_client.get_url_for_object("/ob%20j")
+            self.assertTrue(url.endswith('/p//ob%20j'))
 
     @mock.patch('eventlet.spawn', mock.Mock())
     def test_get_url_for_object_no_endpoint_alive(self):
@@ -233,14 +233,14 @@ class TestSproxydClient(unittest.TestCase):
 
         sproxyd_client = SproxydClient(['http://host:81/'])
         method = 'HTTP_METH'
-        # Note the white space, to test proper URL encoding
+        # Note the white space, to test the client doesn't tamper with the URL
         path = 'pa th'
         headers = {'k': 'v'}
         sproxyd_client._do_http('caller1', {200: mock_handler},
                                 method, path, headers)
 
         mock_http.assert_called_once_with(method,
-                                          'http://host:81/' + urllib.quote(path),
+                                          'http://host:81/' + path,
                                           headers=headers, body=None,
                                           preload_content=False)
         mock_handler.assert_called_once_with(mock_http.return_value)

@@ -21,7 +21,6 @@ import itertools
 import logging
 import pickle
 import socket
-import urllib
 import urlparse
 
 from scality_sproxyd_client import exceptions
@@ -37,7 +36,7 @@ def drain_connection(response):
 
 
 class SproxydClient(object):
-    """A sproxyd file system scheme."""
+    """A Sproxyd client with connection pooling and dead nodes detection."""
 
     DEFAULT_LOGGER = logging.getLogger(__name__)
 
@@ -188,8 +187,8 @@ class SproxydClient(object):
         '''Get an absolute URL from which the object `name` can be accessed.
 
         Only healthy Sproxyd endpoints are concidered to form the base object
-        path. The object `name` is properly escaped by `urllib.quote` which
-        preserves '/' by default.
+        path. The object `name` is expected to have been properly encoded by
+        the caller and must contain only URL-safe characters.
         '''
 
         try:
@@ -197,7 +196,7 @@ class SproxydClient(object):
         except StopIteration:
             raise exceptions.SproxydException("No Sproxyd endpoint alive")
 
-        return '%s/%s' % (endpoint.geturl().rstrip('/'), urllib.quote(name))
+        return '%s/%s' % (endpoint.geturl().rstrip('/'), name)
 
     def _do_http(self, caller_name, handlers, method, path, headers=None,
                  body=None):
