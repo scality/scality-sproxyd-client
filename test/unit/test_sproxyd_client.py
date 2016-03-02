@@ -43,6 +43,15 @@ class TestSproxydClient(unittest.TestCase):
     def test_init_with_invalid_endpoint(self):
         self.assertRaises(ValueError, SproxydClient, ['invalid://'])
 
+    def test_init_with_empty_endpoint(self):
+        self.assertRaises(ValueError, SproxydClient, [''])
+
+    def test_init_with_some_empty_endpoints(self):
+        sproxyd_client = SproxydClient(['', 'http://host:81/path/', ''])
+        self.assertEqual(
+            frozenset([urlparse.urlparse('http://host:81/path/')]),
+            sproxyd_client._endpoints)
+
     def test_init_with_endpoint_with_params(self):
         utils.assertRaisesRegexp(ValueError, '.* params .*',
                                  SproxydClient, ['http://host:81/path;param'])
