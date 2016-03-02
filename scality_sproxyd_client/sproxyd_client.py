@@ -74,7 +74,7 @@ class SproxydClient(object):
         self._endpoints = frozenset(
             endpoint if not isinstance(endpoint, basestring)
             else urlparse.urlparse(endpoint)
-            for endpoint in endpoints)
+            for endpoint in endpoints if endpoint)
 
         if not self._endpoints:
             raise ValueError("At least one Sproxyd endpoint "
