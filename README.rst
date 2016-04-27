@@ -19,6 +19,6 @@ Installation
 
 2. Install the package:
 
-   .. code-block:: bash
+   .. code-block:: console
 
-   sudo pip install scality-sproxyd-client-X.X.X.tar.gz
+       sudo pip install scality-sproxyd-client-X.X.X.tar.gz
