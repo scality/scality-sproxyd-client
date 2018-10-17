@@ -73,7 +73,6 @@ setuptools.setup(
     classifiers=[
         'License :: OSI Approved :: Apache Software License',
         'Operating System :: POSIX :: Linux',
-        'Programming Language :: Python :: 2.6',
         'Programming Language :: Python :: 2.7'],
     install_requires=scality_sproxyd_client.__requires__,
 )
