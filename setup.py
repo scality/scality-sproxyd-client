@@ -17,6 +17,7 @@
 import distutils.spawn
 import setuptools
 import subprocess
+import sys
 
 import scality_sproxyd_client
 
@@ -51,6 +52,8 @@ def get_version():
                '--match', '%s*' % prefix]
 
         result = check_output(cmd).strip()
+        if sys.version_info >= (3, 0):
+            result = str(result, 'utf-8')
         assert result.startswith(prefix)
 
         return result[len(prefix):]
@@ -73,7 +76,6 @@ setuptools.setup(
     classifiers=[
         'License :: OSI Approved :: Apache Software License',
         'Operating System :: POSIX :: Linux',
-        'Programming Language :: Python :: 2.6',
         'Programming Language :: Python :: 2.7'],
     install_requires=scality_sproxyd_client.__requires__,
 )
