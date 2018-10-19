@@ -40,8 +40,8 @@ class SproxydClient(object):
 
     DEFAULT_LOGGER = logging.getLogger(__name__)
 
-    def __init__(self, endpoints, conn_timeout=10.0, read_timeout=3.0,
-                 logger=None):
+    def __init__(self, endpoints, url_username=None, url_password=None,
+                 conn_timeout=10.0, read_timeout=3.0, logger=None):
         '''Construct an `sproxyd` client
 
         This client connects in a round-robin fashion to online Sproxyd
@@ -59,6 +59,9 @@ class SproxydClient(object):
         :param logger: Logger used by methods on the instance
         :type logger: `logging.Logger`
         '''
+
+        self._url_username = url_username
+        self._url_password = url_password
 
         self._conn_timeout = conn_timeout
         self._read_timeout = read_timeout
@@ -125,8 +128,12 @@ class SproxydClient(object):
     def _ping(self, url):
         """Retrieves the Sproxyd active configuration for health checking."""
         try:
+            headers = None
             timeout = urllib3.Timeout(1)
-            conf = self._pool_manager.request('GET', url, timeout=timeout)
+            if self._url_username and self._url_password:
+                creds_str = ('%s:%s' % (self._url_username, self._url_password))
+                headers = urllib3.util.make_headers(basic_auth=creds_str)
+            conf = self._pool_manager.request('GET', url, headers=headers, timeout=timeout)
             return utils.is_sproxyd_conf_valid(conf.data)
         except (IOError, urllib3.exceptions.HTTPError) as exc:
             self._logger.info("Could not read Sproxyd configuration at %s "
@@ -232,6 +239,11 @@ class SproxydClient(object):
                 http_status=response.status,
                 http_reason=response.reason)
 
+        if self._url_username and self._url_password:
+            creds_str = ('%s:%s' % (self._url_username, self._url_password))
+            if headers is None:
+                headers = {}
+            headers.update(urllib3.util.make_headers(basic_auth=creds_str))
         response = self._pool_manager.request(
             method, full_url, headers=headers, body=body, preload_content=False)
         handler = handlers.get(response.status, unexpected_http_status)
@@ -351,6 +363,12 @@ class SproxydClient(object):
             if headers:
                 for header, value in headers.iteritems():
                     conn.putheader(header, str(value))
+
+            if self._url_username and self._url_password:
+                creds_str = ('%s:%s' % (self._url_username, self._url_password))
+                basic_auth_header = urllib3.util.make_headers(basic_auth=creds_str)
+                conn.putheader(basic_auth_header.keys()[0],
+                               basic_auth_header.values()[0])
             conn.endheaders()
 
         except (httplib.HTTPException, socket.error,
