@@ -66,7 +66,7 @@ def get_version():
 
 setuptools.setup(
     name='scality-sproxyd-client',
-    version='0.1.3',
+    version=get_version(),
     description='Python client for Scality Sproxyd connector',
     url='http://www.scality.com/',
     author='Scality Openstack Engineering Team',
