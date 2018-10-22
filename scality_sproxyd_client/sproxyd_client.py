@@ -40,7 +40,9 @@ class SproxydClient(object):
 
     DEFAULT_LOGGER = logging.getLogger(__name__)
 
-    def __init__(self, endpoints, url_username=None, url_password=None,
+    def __init__(self, endpoints,
+                 url_cert_bundle=None, url_client_cert=None, url_client_key=None,
+                 url_username=None, url_password=None,
                  conn_timeout=10.0, read_timeout=3.0, logger=None):
         '''Construct an `sproxyd` client
 
@@ -95,9 +97,15 @@ class SproxydClient(object):
                         'Endpoint with %s not supported: %r' %
                         (attr, endpoint.geturl()))
 
+        cert_reqs = None
+        if url_cert_bundle:
+            cert_reqs = 'CERT_REQUIRED'
+
         self._pool_manager = urllib3.PoolManager(
-            len(self._endpoints), retries=False, maxsize=32,
-            timeout=urllib3.Timeout(
+            len(self._endpoints),
+            cert_reqs=cert_reqs, ca_certs=url_cert_bundle,
+            cert_file=url_client_cert, key_file=url_client_key,
+            retries=False, maxsize=32, timeout=urllib3.Timeout(
                 connect=conn_timeout, read=self._read_timeout))
 
         self._alive = frozenset(self._endpoints)
