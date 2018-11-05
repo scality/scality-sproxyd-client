@@ -165,8 +165,8 @@ class SproxydClient(object):
         self._logger.debug('Alive set is now: %r', self._alive)
 
     def _on_sproxyd_down(self, endpoint):
-        self._logger.warning("Sproxyd connector at %s is down " +
-                             "or misconfigured", endpoint)
+        self._logger.warning("Sproxyd connector at %s is down or misconfigured",
+                             endpoint)
         self._alter_alive(lambda s: s.difference([endpoint]))
         self._logger.debug('Alive set is now: %r', self._alive)
 
@@ -375,8 +375,8 @@ class SproxydClient(object):
             if self._url_username and self._url_password:
                 creds_str = ('%s:%s' % (self._url_username, self._url_password))
                 basic_auth_header = urllib3.util.make_headers(basic_auth=creds_str)
-                conn.putheader(basic_auth_header.keys()[0],
-                               basic_auth_header.values()[0])
+                for (key, value) in basic_auth_header.items():
+                    conn.putheader(key, value)
             conn.endheaders()
 
         except (httplib.HTTPException, socket.error,
