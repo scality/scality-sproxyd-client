@@ -12,13 +12,6 @@ are accessed.
 
 Installation
 ------------
-1. Download the archive (ZIP or tar.gz) of the source code from the 
-   `releases page`_.
-
-.. _releases page: https://github.com/scality/scality-sproxyd-client/releases
-
-2. Install the package:
-
    .. code-block:: console
 
-       sudo pip install scality-sproxyd-client-X.X.X.tar.gz
+       pip install scality-sproxyd-client
